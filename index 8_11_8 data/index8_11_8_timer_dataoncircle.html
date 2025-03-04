@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Untitled Document</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body{
+            background: #eee;
+        }
+        .axis path,
+        .axis line{
+            fill:none;
+            stroke:black;
+            shape-rendering:auto;
+        }
+
+        .axis text{
+            font-size: 11px;
+            fill:blue;
+        }
+ /* Tooltip styling */
+        #tooltip {
+            position: absolute;
+            text-align: center;
+            width: auto;
+            padding: 8px;
+            font: 12px sans-serif;
+            background: lightgray;
+            border: 1px solid gray;
+            border-radius: 4px;
+            pointer-events: none;
+            display: none; /* Initially hidden */
+        }
+        /* #showY {
+            "x":w-padding-400;
+            "y":h-padding;
+            text-align: left;
+            font: 200px sans-serif;
+            fill: black;
+            opacity: 2;
+        } */
+    </style>
+</head>
+<body>
+ <!-- Tooltip element -->
+    <div id="tooltip" class="hidden">
+        <p><strong id="city">Hello</strong></p>
+        <p id="category">tooltip</p>
+    </div>
+    <input type="button" value="PLAY" id="timer">
+    
+    <script>
+        // 1. 定義width, height, padding, letterList變數
+        var w = 900;
+        var h = 600;
+        var padding =80;
+        var letterList = ["A","B","C","D","E","F","G","H","I","J","K","M","N","O","P","Q","T","U","V","W","X","Z"];
+        
+        //2. 建立svg()畫布環境
+        
+        svg();       
+        
+        //3.0 日期轉換為(yyyy)
+            const parseDate = d3.timeParse("%Y");
+            const formatDate = d3.timeFormat("%Y");
+        
+        //3. 用d3讀取csv
+      d3.csv("cancer_data.csv",function(d){
+      d.date =parseDate(d.date);
+            d.incidence=+d.incidence;
+            d.count=+d.count;
+            d.avg_age=+d.avg_age;
+            d.mid_age=+d.mid_age;
+            d.crude_rate=+d.crude_rate;
+            return d
+        }).then((dataSet) =>{ 
+            console.log("Loaded Data:",dataSet);
+           bind(dataSet);
+           render(dataSet);
+            btnList(dataSet);
+            })
+            
+        function svg(){
+           d3.select("body")
+    .append("svg")
+    .attr("width",w)
+     .attr("height",h)
+     };
+    
+        
+            d3.select("svg")
+       .append("g")
+       .append("rect")
+       .attr("width","100%")
+       .attr("height","100%")
+       .attr("fill","white");
+        
+        
+            d3.select("svg")
+     .append("g")
+     .classed("axis",true)
+     .attr("id","axisX");
+        
+           d3.select("svg")
+     .append("g")
+     .classed("axis",true)
+     .attr("id","axisY")
+        
+        
+        
+        
+        //4. 建立bind()
+        
+      function bind(dataSet){
+            var selection = d3.select("svg")
+                       .selectAll("circle")
+                       .data(dataSet);
+            
+            selection.enter().append("circle");
+            selection.exit().remove();
+        }
+        // 建立render()
+        let isInitialRender = true; // Track if it's the initial render
+        
+           function render(dataSet){
+            //5. 定義xScale,yScale,rScale, fScale比例尺(range目的在決定在svg上位置)
+        
+        var xScale = d3.scaleLinear()
+        .domain(isInitialRender 
+            ? [0,100] // Fixed domain for the initial render
+            : [
+       d3.min(dataSet, d => d.crude_rate) * 0.95,
+       d3.max(dataSet, d => d.crude_rate) * 1.05
+            ]) // Dynamic domain for updates
+        .range([(padding + 30), (w - padding)]);
+        
+            var yScale = d3.scaleLinear()
+        .domain([
+            d3.min(dataSet, d => d.avg_age) * 0.95,
+            d3.max(dataSet, d => d.avg_age) * 1.05
+        ])
+        .range([(h - padding), padding]);
+        
+            var rScale = d3.scaleLinear()
+        .domain(d3.extent(dataSet, d => d.count))
+        .range([5, 30]);
+                
+            var fScale = d3.scaleOrdinal()
+        .domain([...new Set(dataSet.map(d => d.city))])
+        .range(d3.schemeCategory10);
+        
+            
+            //設定軸線
+    var xAxis = d3.axisBottom(xScale)
+        .ticks(5)
+        .tickFormat(d3.format(".2f")); // Two decimal places
+            
+      var yAxis = d3.axisLeft(yScale)
+        .ticks(10);
+        
+              
+            //6. 建立render()繪圖
+    var circles = d3.select("svg")
+                     .selectAll("circle")
+                     .data(dataSet);
+        
+            circles.enter()
+        .append("circle")
+        .merge(circles)
+        .transition()
+        .duration(500) // Smooth transition
+        .attr("cx", d => xScale(d.crude_rate))
+        .attr("cy", d => yScale(d.avg_age))
+        .attr("r", d => rScale(d.count))
+        .attr("fill", d => fScale(d.city));
+        
+            circles.exit().remove();
+            
+            // Update X axis
+            d3.select("svg>#axisX")
+        .attr("transform", `translate(0, ${h - padding})`)
+        .call(xAxis);
+        
+            // Update Y axis
+            d3.select("svg>#axisY")
+        .attr("transform", `translate(${padding}, 0)`)
+        .call(yAxis);
+      
+        isInitialRender = false;
+        
+         // Tooltip logic
+            const tooltip = d3.select("#tooltip");//注意要連結CSS的tooltip設定變更由select(".tooltip")為select(".tooltip")
+        
+            d3.selectAll("circle")
+       .on("mouseover", (event, d) => {
+           tooltip.style("display", "block")
+          .html(`<strong>城市:</strong> ${d.city}<br><strong>病例數:</strong> ${d.count}`);
+       })
+       .on("mousemove", (event) => {
+           tooltip.style("left",`${event.pageX + 10}px`)
+               .style("top", `${event.pageY + 10}px`);
+       })
+       .on("mouseout", () => {
+           tooltip.style("display", "none");
+       });
+           }
+          
+        function unique(array){
+       var n=[];
+            for (var i=0;i<array.length;i++){
+       if (n.indexOf(array[i])===-1){
+           n.push(array[i]);
+       }               
+       
+            }    
+            return n;
+            }
+        function btnList(dataSet) {
+            const categoryArr = unique(dataSet.map(d => d.category).filter(Boolean));
+        
+            const selection = d3.select("body")
+        .append("select")
+        .selectAll("option")
+        .data(categoryArr);
+        
+        selection.enter()
+        .append("option")
+        .attr("value", d => d)
+        .text(d => d);
+        
+            selection.exit().remove();
+        
+        d3.select("select").on("change", function () {
+        const value = d3.select(this).property("value");
+        const filteredData = dataSet.filter(d => d.category === value);
+        bind(filteredData);
+        render(filteredData);
+            });
+        
+    d3.select("#timer").on("click", () => {
+        const dateArr = unique(dataSet.map(d => d.date.getFullYear()));
+        let idx = 0;
+            
+           d3.select("svg")
+            .append("text")
+            .attr("id","showY")
+            .attr("x",w-padding-200)
+            .attr("y",h-padding)
+            .attr("fill","black")
+            .attr("fill-opacity","0.2")
+            .attr("font-size",200)
+            
+        const interval = setInterval(() => {
+            if (idx >= dateArr.length) {
+       clearInterval(interval);
+       return;
+            }
+        
+            const selectedCategory = d3.select("select").property("value");
+            const filteredData = dataSet.filter(d =>
+       d.category === selectedCategory && d.date.getFullYear() === dateArr[idx]
+            );
+        
+            console.log(`Year: ${dateArr[idx]}, Data:`, filteredData); // Debugging
+        
+            bind(filteredData);
+            d3.select("#showY").text(dateArr[idx]);
+            // Reset the `isInitialRender` only for the first loop iteration
+            if (idx === 0) isInitialRender = true;
+        
+            render(filteredData);
+            
+            
+        
+            idx++;
+           
+        }, 1000);
+            });
+        }
+        
+            </script>
+</body>
+</html>
